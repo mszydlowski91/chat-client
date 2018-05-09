@@ -1,35 +1,77 @@
-import {Configuration} from './Configuration';
+import { Configuration } from './Configuration';
 import * as io from 'socket.io-client';
+import { IChatMessage } from './IChatMessage';
+import { MessageTypes } from './MessageTypes';
 
 export class Communication {
+    public onHistoryReceived: null | ((history: IChatMessage[]) => void);
+    public onMessageReceived: null | ((message: IChatMessage) => void);
+    public onUserJoined: null | ((user: string) => void);
+    public onUserLeft: null | ((user: string) => void);
+    public onUserListReceived: null | ((users: string[]) => void);
+
     private webSocket: SocketIOClient.Socket;
-    private messagesList: HTMLElement;
-    private textInput: HTMLInputElement;
     constructor() {
         this.webSocket = io(Configuration.apiUrl);
-        this.webSocket.on('chat message', (msg: IChatMessage) => this.onMessage(msg));
-        this.messagesList = document.querySelector('#messages') as HTMLElement;
-        this.textInput = document.querySelector('#main-input') as HTMLInputElement;
 
-        this.textInput.addEventListener('keypress', (e: KeyboardEvent) => {
-            let returnKeyCode = 13;
-            if(e.keyCode === returnKeyCode) {
-                let value = this.textInput.value;
-                this.webSocket.emit('chat message', value);
-                this.textInput.value = '';
+        this.webSocket.on(MessageTypes.ChatHistory, (msgs: IChatMessage[]) => {
+            if (this.onHistoryReceived) {
+                this.onHistoryReceived(msgs);
             }
         });
+
+        this.webSocket.on(MessageTypes.ChatMessage, (msg: IChatMessage) => {
+            if (this.onMessageReceived) {
+                this.onMessageReceived(msg);
+            }
+        });
+
+        this.webSocket.on(MessageTypes.UserJoin, (user: string) => {
+            if (this.onUserJoined) {
+                this.onUserJoined(user);
+            }
+        });
+
+        this.webSocket.on(MessageTypes.UserLeft, (user: string) => {
+            if (this.onUserLeft) {
+                this.onUserLeft(user);
+            }
+        });
+
+        this.webSocket.on(MessageTypes.UserList, (users: string[]) => {
+            if (this.onUserListReceived) {
+                this.onUserListReceived(users);
+            }
+        });
+
+        this.webSocket.emit(MessageTypes.UserJoin, this.generateUserName());
+
+        this.onHistoryReceived = null;
+        this.onMessageReceived = null;
+        this.onUserJoined = null;
+        this.onUserLeft = null;
+        this.onUserListReceived = null;
     }
 
-    onMessage(msg: IChatMessage) {
-        console.log(msg);
-        let li = document.createElement('li');
-        li.innerText = `${msg.author}: ${msg.text}`;
-        this.messagesList.appendChild(li);
+    public destroy(): void {
+        this.webSocket.off(MessageTypes.ChatHistory);
+        this.webSocket.off(MessageTypes.ChatMessage);
+        this.webSocket.off(MessageTypes.UserJoin);
+        this.webSocket.off(MessageTypes.UserLeft);
+        this.webSocket.off(MessageTypes.UserList);
     }
+
+    public sendMessage(content: string): void {
+        let message: IChatMessage = {
+            text: content,
+            type: 'text'
+        };
+        this.webSocket.emit(MessageTypes.ChatMessage, message);
+    }
+
+    private generateUserName(): string {
+        return `user${new Date().getTime()}`;
+    }
+
 }
 
-interface IChatMessage {
-    text: string;
-    author: string;
-}
